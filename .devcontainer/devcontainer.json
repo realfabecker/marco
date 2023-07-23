@@ -1,0 +1,21 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+// https://github.com/microsoft/vscode-dev-containers/tree/v0.194.3/containers/docker-existing-dockerfile
+{
+  "name": "pwo-mws-node-splitter",
+  "dockerFile": "../Dockerfile",
+  "remoteUser": "gopher",
+  "workspaceFolder": "/home/gopher/src/toolkit",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/gopher/src/toolkit,type=bind,consistency=cached",
+  "runArgs": ["--rm", "--network=host", "--name", "toolkit"],
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go", "ms-azuretools.vscode-docker"],
+      "settings": {
+        "editor.formatOnSave": true,
+        "[go]": {
+          "editor.formatOnSave": true
+        }
+      }
+    }
+  }
+}
