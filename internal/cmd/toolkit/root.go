@@ -16,5 +16,6 @@ func NewRootCmd() *cobra.Command {
 	root.SetHelpCommand(&cobra.Command{Hidden: true})
 	root.AddCommand(newBtreeCmd())
 	root.AddCommand(newPtypeCmd())
+	root.AddCommand(newReportCmd())
 	return root
 }
