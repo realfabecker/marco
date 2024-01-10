@@ -11,20 +11,19 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/rafaelbeecker/mwskit/internal/mws/signer"
 	"golang.org/x/sync/errgroup"
 )
 
-// PtypeService
 type PtypeService struct{}
 
-// GetProductTypeDefSchemaUrl
 func (s *PtypeService) GetProductTypeDefSchemaUrl(sellerId string, productType string) (string, error) {
 	url := `https://sellingpartnerapi-na.amazon.com/definitions/2020-09-01/productTypes/` + productType
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return "", fmt.Errorf("GetProductTypeDefSchemaUrl: %w", err)
+		return "", fmt.Errorf("GetProductTypeDefSchemaUrl (%s): %w", productType, err)
 	}
 
 	q := req.URL.Query()
@@ -49,28 +48,34 @@ func (s *PtypeService) GetProductTypeDefSchemaUrl(sellerId string, productType s
 
 	client := http.Client{}
 	resp, err := client.Do(req2)
-	if err != nil {
-		return "", fmt.Errorf("GetProductTypeDefSchemaUrl: %w", err)
+	if resp.StatusCode == 429 {
+		return "", Err429
+	} else if err != nil {
+		return "", fmt.Errorf("GetProductTypeDefSchemaUrl (%s): %w", productType, err)
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("GetProductTypeDefSchemaUrl: %w", err)
+		return "", fmt.Errorf("GetProductTypeDefSchemaUrl (%s): %w", productType, err)
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("GetProductTypeDefSchemaUrl: %d", resp.StatusCode)
+		return "", fmt.Errorf("GetProductTypeDefSchemaUrl (%s): %d", productType, resp.StatusCode)
 	}
 
 	payload := ProductTypeDefinitions{}
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return "", fmt.Errorf("GetProductTypeDefSchemaUrl: %w", err)
+		return "", fmt.Errorf("GetProductTypeDefSchemaUrl (%s): %w", productType, err)
 	}
 	return payload.Schema.Link.Resource, nil
 }
 
-// DownloadProductTypeDef
 func (s *PtypeService) DownloadProductTypeDef(dest string, link string) error {
 	request, err := http.NewRequest(http.MethodGet, link, nil)
 	if err != nil {
@@ -87,7 +92,11 @@ func (s *PtypeService) DownloadProductTypeDef(dest string, link string) error {
 	if err != nil {
 		return fmt.Errorf("DownloadProductTypeDef: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 
 	if _, err := io.Copy(file, resp.Body); err != nil {
 		return fmt.Errorf("DownloadProductTypeDef: %w", err)
@@ -95,13 +104,17 @@ func (s *PtypeService) DownloadProductTypeDef(dest string, link string) error {
 	return nil
 }
 
-// DownloadBatchTypeDef
 func (s *PtypeService) DownloadBatchTypeDef(marketplace string, productList string, target string) error {
 	file, err := os.Open(productList)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 
 	reader := csv.NewReader(file)
 	data, err := reader.ReadAll()
@@ -110,29 +123,41 @@ func (s *PtypeService) DownloadBatchTypeDef(marketplace string, productList stri
 	}
 
 	var eg errgroup.Group
-	eg.SetLimit(5)
+	eg.SetLimit(50)
 
+	pause := make(chan bool, 1)
 	for _, v := range data {
 		eg.Go(func(t string) func() error {
 			return func() error {
-				dest := filepath.Join(target, t+".json")
-				f, err := os.Stat(dest)
-				if f != nil {
-					log.Printf("schema already exists %s\n", dest)
+				select {
+				case <-pause:
+					time.Sleep(time.Second * 10)
 					return nil
-				} else if !errors.Is(err, os.ErrNotExist) {
-					return err
+				default:
+					dest := filepath.Join(target, t+".json")
+					f, err := os.Stat(dest)
+					if f != nil {
+						log.Printf("schema already exists %s\n", dest)
+						return nil
+					} else if !errors.Is(err, os.ErrNotExist) {
+						return err
+					}
+
+					log.Printf("downloading schema %s\n", t)
+					link, err := s.GetProductTypeDefSchemaUrl(marketplace, t)
+					if err != nil && errors.Is(err, Err429) {
+						pause <- true
+						return nil
+					} else if err != nil {
+						return err
+					}
+
+					if err := s.DownloadProductTypeDef(dest, link); err != nil {
+						return err
+					}
+					log.Printf("schema downloaded at %s\n", dest)
+					return nil
 				}
-				log.Printf("downloading schema %s\n", t)
-				link, err := s.GetProductTypeDefSchemaUrl(marketplace, t)
-				if err != nil {
-					return err
-				}
-				if err := s.DownloadProductTypeDef(dest, link); err != nil {
-					return err
-				}
-				log.Printf("schema downloaded at %s\n", dest)
-				return nil
 			}
 		}(v[0]))
 	}

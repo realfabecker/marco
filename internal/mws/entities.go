@@ -1,14 +1,19 @@
 package mws
 
-import "encoding/xml"
+import (
+	"encoding/xml"
+	"errors"
+)
 
-// BrowseList mws browse node report list
+var (
+	Err429 = errors.New("oh no, too many requests")
+)
+
 type BrowseList struct {
 	XMLName xml.Name     `xml:"Result"`
 	Result  []BrowseNode `xml:"Node"`
 }
 
-// BrowseNode mws browse node definition
 type BrowseNode struct {
 	BrowseNodeId           string `xml:"browseNodeId"`
 	BrowseNodeName         string `xml:"browseNodeName"`
@@ -18,11 +23,24 @@ type BrowseNode struct {
 	ProductTypeDefinitions string `xml:"productTypeDefinitions"`
 }
 
-// ProductTypeDefinitions download specs
 type ProductTypeDefinitions struct {
 	Schema struct {
 		Link struct {
 			Resource string `json:"resource"`
 		} `json:"link"`
 	} `json:"schema"`
+}
+
+type Report struct {
+	ReportType       string   `json:"reportType"`
+	ProcessingStatus string   `json:"processingStatus"`
+	MarketplaceIds   []string `json:"MarketplaceIds"`
+	ReportId         string   `json:"reportId"`
+	ReportDocumentId string   `json:"reportDocumentId"`
+}
+
+type ReportDocument struct {
+	ReportDocumentId     string `json:"reportDocumentId"`
+	CompressionAlgorithm string `json:"compressionAlgorithm"`
+	Url                  string `json:"url"`
 }

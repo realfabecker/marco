@@ -35,9 +35,8 @@ func newBtreeReportFlatCmd() *cobra.Command {
 
 	cmd.Flags().String("report", "", "product type")
 	cmd.Flags().String("target", "", "download target")
-
-	cmd.MarkFlagRequired("report")
-	cmd.MarkFlagRequired("target")
+	_ = cmd.MarkFlagRequired("report")
+	_ = cmd.MarkFlagRequired("target")
 	return cmd
 }
 

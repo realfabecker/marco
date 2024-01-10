@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/rafaelbeecker/mwskit/internal/mws"
@@ -16,7 +17,7 @@ func newPtypeSchemaDownloadCmd() *cobra.Command {
 			productType, _ := cmd.Flags().GetString("ptype")
 			productList, _ := cmd.Flags().GetString("plist")
 			target, _ := cmd.Flags().GetString("target")
-			seller, _ := cmd.Flags().GetString("seller")
+			seller := os.Getenv("AWS_SELLER_ID")
 
 			if productType != "" {
 				s := mws.PtypeService{}
@@ -38,7 +39,7 @@ func newPtypeSchemaDownloadCmd() *cobra.Command {
 				); err != nil {
 					return err
 				}
-				log.Println("batch downloaded successfuly")
+				log.Println("batch downloaded")
 			}
 			return nil
 		},
@@ -48,9 +49,7 @@ func newPtypeSchemaDownloadCmd() *cobra.Command {
 	cmd.Flags().String("ptype", "", "product type")
 	cmd.Flags().String("target", "", "download target")
 	cmd.Flags().String("plist", "", "product type list (csv)")
-
-	cmd.MarkFlagRequired("seller")
-	cmd.MarkFlagRequired("target")
+	_ = cmd.MarkFlagRequired("target")
 	return cmd
 }
 

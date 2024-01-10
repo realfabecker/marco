@@ -5,12 +5,18 @@ import (
 	"github.com/rafaelbeecker/mwskit/internal/mws"
 	"github.com/spf13/cobra"
 	"log"
+	"strings"
 )
 
 func newReportCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create report",
+		Example: `
+   # Browse Tree Report
+
+   toolkit report create --report-type GET_XML_BROWSE_TREE_DATA
+`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reportType, _ := cmd.Flags().GetString("report-type")
 			s := mws.ReportService{}
@@ -35,21 +41,24 @@ func newReportDownloadCmd() *cobra.Command {
 			target, _ := cmd.Flags().GetString("target")
 			reportId, _ := cmd.Flags().GetString("report-id")
 			s := mws.ReportService{}
-			documentId, err := s.GetReport(reportId)
+			report, err := s.GetReport(reportId)
 			if err != nil {
 				return err
 			}
-			if documentId == "" {
-				return fmt.Errorf("documentId not ready to consume yet")
+
+			if strings.ToUpper(report.ProcessingStatus) != "DONE" {
+				return fmt.Errorf("report not ready yet: %s", report.ProcessingStatus)
 			}
-			documentUrl, err := s.GetReportDocument(documentId)
+
+			document, err := s.GetReportDocument(report.ReportDocumentId)
 			if err != nil {
 				return err
 			}
-			if err := s.DownloadReportDocument(reportId, target, documentUrl); err != nil {
+			if err := s.DownloadReportDocument(reportId, target, document.Url); err != nil {
 				return err
 			}
-			fmt.Printf("Download de arquivo relatório %s no diretório %s\n", reportId, target)
+
+			log.Printf("Download de arquivo relatório %s no diretório %s\n", reportId, target)
 			return nil
 		},
 	}

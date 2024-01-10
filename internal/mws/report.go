@@ -7,6 +7,7 @@ import (
 	"github.com/rafaelbeecker/mwskit/internal/mws/signer"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -47,7 +48,11 @@ func (r *ReportService) CreateReport(reportType string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("CreateReport: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("CreateReport: %w", err)
@@ -64,11 +69,11 @@ func (r *ReportService) CreateReport(reportType string) (string, error) {
 	return rep.ReportId, nil
 }
 
-func (r *ReportService) GetReport(reportId string) (string, error) {
+func (r *ReportService) GetReport(reportId string) (*Report, error) {
 	url := `https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/` + reportId
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return "", fmt.Errorf("GetProductTypeDefSchemaUrl: %w", err)
+		return nil, fmt.Errorf("GetProductTypeDefSchemaUrl: %w", err)
 	}
 
 	req.Header.Set("host", "sellingpartnerapi-na.amazon.com")
@@ -86,34 +91,28 @@ func (r *ReportService) GetReport(reportId string) (string, error) {
 	client := http.Client{}
 	resp, err := client.Do(req2)
 	if err != nil {
-		return "", fmt.Errorf("CreateReport: %w", err)
+		return nil, fmt.Errorf("CreateReport: %w", err)
 	}
 	defer resp.Body.Close()
 	d, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("CreateReport: %w", err)
+		return nil, fmt.Errorf("CreateReport: %w", err)
 	}
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("CreateReport: %d", resp.StatusCode)
+		return nil, fmt.Errorf("CreateReport: %d", resp.StatusCode)
 	}
-	var rep struct {
-		ReportType       string   `json:"reportType"`
-		ProcessingStatus string   `json:"processingStatus"`
-		MarketplaceIds   []string `json:"MarketplaceIds"`
-		ReportId         string   `json:"reportId"`
-		ReportDocumentId string   `json:"reportDocumentId"`
-	}
+	var rep Report
 	if err := json.Unmarshal(d, &rep); err != nil {
-		return "", fmt.Errorf("GetReport: %w", err)
+		return nil, fmt.Errorf("GetReport: %w", err)
 	}
-	return rep.ReportDocumentId, nil
+	return &rep, nil
 }
 
-func (r *ReportService) GetReportDocument(reportDocumentId string) (string, error) {
+func (r *ReportService) GetReportDocument(reportDocumentId string) (*ReportDocument, error) {
 	url := `https://sellingpartnerapi-na.amazon.com//reports/2021-06-30/documents/` + reportDocumentId
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return "", fmt.Errorf("GetProductTypeDefSchemaUrl: %w", err)
+		return nil, fmt.Errorf("GetProductTypeDefSchemaUrl: %w", err)
 	}
 
 	req.Header.Set("host", "sellingpartnerapi-na.amazon.com")
@@ -131,25 +130,25 @@ func (r *ReportService) GetReportDocument(reportDocumentId string) (string, erro
 	client := http.Client{}
 	resp, err := client.Do(req2)
 	if err != nil {
-		return "", fmt.Errorf("CreateReport: %w", err)
+		return nil, fmt.Errorf("CreateReport: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 	d, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("CreateReport: %w", err)
+		return nil, fmt.Errorf("CreateReport: %w", err)
 	}
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("CreateReport: %d", resp.StatusCode)
+		return nil, fmt.Errorf("CreateReport: %d", resp.StatusCode)
 	}
-	var rep struct {
-		ReportDocumentId     string `json:"reportDocumentId"`
-		CompressionAlgorithm string `json:"compressionAlgorithm"`
-		Url                  string `json:"url"`
-	}
+	var rep ReportDocument
 	if err := json.Unmarshal(d, &rep); err != nil {
-		return "", fmt.Errorf("GetReport: %w", err)
+		return nil, fmt.Errorf("GetReport: %w", err)
 	}
-	return rep.Url, nil
+	return &rep, nil
 }
 
 func (r *ReportService) DownloadReportDocument(name string, dest string, url string) error {
@@ -166,7 +165,11 @@ func (r *ReportService) DownloadReportDocument(name string, dest string, url str
 	if err != nil {
 		return fmt.Errorf("DownloadReportDocument: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 	if _, err := io.Copy(file, resp.Body); err != nil {
 		return fmt.Errorf("DownloadReportDocument: %w", err)
 	}
