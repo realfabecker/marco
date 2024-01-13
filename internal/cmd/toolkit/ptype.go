@@ -45,7 +45,6 @@ func newPtypeSchemaDownloadCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("seller", "", "seller")
 	cmd.Flags().String("ptype", "", "product type")
 	cmd.Flags().String("target", "", "download target")
 	cmd.Flags().String("plist", "", "product type list (csv)")

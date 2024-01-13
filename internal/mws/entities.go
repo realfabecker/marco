@@ -7,6 +7,7 @@ import (
 
 var (
 	Err429 = errors.New("oh no, too many requests")
+	Err404 = errors.New("oh no, record not found")
 )
 
 type BrowseList struct {

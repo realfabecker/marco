@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rafaelbeecker/mwskit/internal/mws/signer"
+	"golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
-
-	"github.com/rafaelbeecker/mwskit/internal/mws/signer"
-	"golang.org/x/sync/errgroup"
 )
 
 type PtypeService struct{}
@@ -48,8 +48,10 @@ func (s *PtypeService) GetProductTypeDefSchemaUrl(sellerId string, productType s
 
 	client := http.Client{}
 	resp, err := client.Do(req2)
-	if resp.StatusCode == 429 {
+	if resp != nil && resp.StatusCode == 429 {
 		return "", Err429
+	} else if resp != nil && resp.StatusCode == 404 {
+		return "", Err404
 	} else if err != nil {
 		return "", fmt.Errorf("GetProductTypeDefSchemaUrl (%s): %w", productType, err)
 	}
@@ -125,41 +127,50 @@ func (s *PtypeService) DownloadBatchTypeDef(marketplace string, productList stri
 	var eg errgroup.Group
 	eg.SetLimit(50)
 
-	pause := make(chan bool, 1)
-	for _, v := range data {
-		eg.Go(func(t string) func() error {
+	var retry time.Time
+	var mtx sync.Mutex
+	for i, v := range data {
+		eg.Go(func(t string, i int) func() error {
 			return func() error {
-				select {
-				case <-pause:
-					time.Sleep(time.Second * 10)
-					return nil
-				default:
-					dest := filepath.Join(target, t+".json")
-					f, err := os.Stat(dest)
-					if f != nil {
-						log.Printf("schema already exists %s\n", dest)
-						return nil
-					} else if !errors.Is(err, os.ErrNotExist) {
-						return err
-					}
+				mtx.Lock()
+				r := retry
+				mtx.Unlock()
 
-					log.Printf("downloading schema %s\n", t)
-					link, err := s.GetProductTypeDefSchemaUrl(marketplace, t)
-					if err != nil && errors.Is(err, Err429) {
-						pause <- true
-						return nil
-					} else if err != nil {
-						return err
-					}
-
-					if err := s.DownloadProductTypeDef(dest, link); err != nil {
-						return err
-					}
-					log.Printf("schema downloaded at %s\n", dest)
-					return nil
+				if time.Now().Before(r) {
+					time.Sleep(time.Until(r))
 				}
+
+				dest := filepath.Join(target, t+".json")
+				f, err := os.Stat(dest)
+				if f != nil {
+					return nil
+				} else if !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+
+				log.Printf("downloading schema %s\n", t)
+				link, err := s.GetProductTypeDefSchemaUrl(marketplace, t)
+				if err != nil && errors.Is(err, Err429) {
+					log.Printf("%s: 429\n", t)
+					mtx.Lock()
+					retry = time.Now().Add(time.Second * 10)
+					mtx.Unlock()
+					return nil
+				} else if err != nil && errors.Is(err, Err404) {
+					log.Printf("%s: 404\n", t)
+					return nil
+				} else if err != nil {
+					return err
+				}
+
+				if err := s.DownloadProductTypeDef(dest, link); err != nil {
+					return err
+				}
+
+				log.Printf("schema downloaded at %s\n", dest)
+				return nil
 			}
-		}(v[0]))
+		}(v[0], i))
 	}
 	return eg.Wait()
 }
